@@ -1,11 +1,16 @@
 import logging
 
-from data import get_data
+from ffc_db import FFC_DB
 
 LOG_FORMAT = "[%(asctime)s - %(levelname)s] %(message)s"
 DATE_FORMAT = "%d-%m-%Y %H:%M:%S"
-logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, datefmt=DATE_FORMAT)
+
 
 
 if __name__ == "__main__":
-    data = get_data()
+    logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, datefmt=DATE_FORMAT)
+    logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT, datefmt=DATE_FORMAT)
+    db = FFC_DB()
+    if not db.is_downloaded:
+        db.download_xlsx()
+    db.clean_data()
