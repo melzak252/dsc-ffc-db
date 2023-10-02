@@ -1,8 +1,7 @@
 import logging
 
-import altair as alt
+import matplotlib.pyplot as plt
 import pandas as pd
-import streamlit as st
 
 from ffc_db import FFC_DB
 
@@ -38,24 +37,33 @@ if __name__ == "__main__":
     ]
 
     results = []
-
-    # Calculate the percentage of hazardous substances for each material
+ 
     for column in material_columns:
         total_substances = df[column].sum()
         hazardous_substances = df[df['Hazardous auth'] & df[column]].shape[0]
-        percentage_hazardous = (hazardous_substances / total_substances)
-        results.append({'material': column, 'percentage_hazardous': percentage_hazardous})
+        percentage_hazardous = (hazardous_substances / total_substances) * 100
+        results.append({
+            'material': column, 
+            'percentage_hazardous': percentage_hazardous,
+            'count': total_substances
+        })
 
-    # Convert results to a DataFrame
     result_df = pd.DataFrame(results)
 
-    # Create an Altair chart
-    chart = alt.Chart(result_df).mark_bar().encode(
-        x=alt.X('material', sort='-y'),
-        y='percentage_hazardous',
-        tooltip=['material', 'percentage_hazardous']
-    ).properties(
-        title="Percentage of Hazardous Substances in Each Material"
-    )
+    materials = result_df['material'].tolist()
+    counts = result_df['count'].tolist()
+    percentages = result_df['percentage_hazardous'].tolist()
 
-    st.altair_chart(chart, use_container_width=True)
+    bars = plt.bar(materials, percentages, color='blue')
+
+    for i, bar in enumerate(bars):
+        plt.text(i, bar.get_height() / 2, f'{round(percentages[i], 2)}%', ha='center', va='bottom', color='white', fontsize=8)
+
+    plt.ylabel('Count of Substances')
+    plt.title('Count of Substances in Each Material (Colored by Hazardous Percentage)')
+    plt.xticks(rotation=45, ha='right')
+
+    # Display the plot in Streamlit
+    plt.show()
+
+
