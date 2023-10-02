@@ -5,7 +5,8 @@ import re
 import pandas as pd
 import requests
 
-DATA_FILE_NAME = "data/data.xlsx"
+DATA_FILE_NAME = "data/FFCdb.xlsx"
+CLEANDED_DATA = "data/FFCdb_clean.csv"
 SHEET_NAME = "FCCdb_FINAL_LIST"
 API_RECORD_URL = "https://zenodo.org/api/records/4296944"
 API_XL_DATA_URL = "https://zenodo.org/api/files/9b157c7a-93cc-4812-aeff-3c1fe71dbafd/FCCdb_201130_v5_Zenodo.xlsx"
@@ -59,8 +60,8 @@ class FFC_DB:
 
         self._replace_material_info(df, new_df)
 
-        new_df.to_excel("data/cleaned.xlsx", engine="openpyxl")
-        new_df.to_csv("data/cleaned.csv")
+        # new_df.to_excel("data/cleaned.xlsx", engine="openpyxl")
+        new_df.to_csv(CLEANDED_DATA)
 
     def _fill_CAS_numbers(self, df: pd.DataFrame, new_df: pd.DataFrame):
         name = "CAS \nvalidity"
@@ -75,3 +76,6 @@ class FFC_DB:
                 new_df[material] = df[col_name] != 0
                 
         new_df["Usage count"] = df["N global \nFCM inventories where included"].astype(int)
+
+    def get_clean_data(self) -> pd.DataFrame:
+        return pd.read_csv(CLEANDED_DATA)
