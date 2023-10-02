@@ -15,7 +15,7 @@ if __name__ == "__main__":
     db = FFC_DB()
     if not db.is_downloaded:
         db.download_xlsx()
-    # db.clean_data()
+    db.clean_data()
     df = db.get_clean_data()
     material_columns = [
         "Plastics",
