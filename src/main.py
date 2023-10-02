@@ -8,6 +8,13 @@ from ffc_db import FFC_DB
 LOG_FORMAT = "[%(asctime)s - %(levelname)s] %(message)s"
 DATE_FORMAT = "%d-%m-%Y %H:%M:%S"
 
+def plot_bars(ax, labels, values, color='#000099'):
+    ax.grid(True, linestyle='--', linewidth=0.5)
+    result_df.sort_values("count", inplace=True, ascending=False)    
+    bars = ax.bar(labels, values, color=color, zorder=3)
+    for i, (bar, count) in enumerate(zip(bars, values)):
+        ax.text(i, bar.get_height() / 2, f'{count}', ha='center', va='bottom', color='white', fontsize=8)
+
 
 if __name__ == "__main__":
     plt.style.use('dark_background')
@@ -42,7 +49,7 @@ if __name__ == "__main__":
     for column in material_columns:
         total_substances = df[column].sum()
         hazardous_substances = df[df['Hazardous auth'] & df[column]].shape[0]
-        percentage_hazardous = (hazardous_substances / total_substances) * 100
+        percentage_hazardous = (hazardous_substances / total_substances)
         results.append({
             'material': column, 
             'percentage_hazardous': percentage_hazardous,
@@ -50,45 +57,33 @@ if __name__ == "__main__":
             'hazardous_substances_count': hazardous_substances
         })
 
-    # results.sort(key=lambda x: x["percentage_hazardous"], reverse=True)
-
     result_df = pd.DataFrame(results)
 
     fig, (ax, ax1, ax2) = plt.subplots(ncols=3)
 
     # Counts
-    ax.grid(True, linestyle='--', linewidth=0.5)
     result_df.sort_values("count", inplace=True, ascending=False)    
-    bars = ax.bar(result_df['material'], result_df['count'], color='#000099', zorder=3)
-    for i, (bar, count) in enumerate(zip(bars, result_df['count'])):
-        ax.text(i, bar.get_height() / 2, f'{count}', ha='center', va='bottom', color='white', fontsize=8)
-
+    plot_bars(ax, result_df['material'], result_df['count'])
     ax.set_ylabel('Count of Materials')
     ax.set_title('Count of Substances in Each Material')
     ax.set_xticklabels(result_df['material'], rotation=45, ha='right')
 
     # Hazardous substances count
-    ax1.grid(True, linestyle='--', linewidth=0.5)
     result_df.sort_values("hazardous_substances_count", inplace=True, ascending=False)    
-    bars = ax1.bar(result_df['material'], result_df['hazardous_substances_count'], color='#000099', zorder=3)
-    for i, (bar, count) in enumerate(zip(bars, result_df['hazardous_substances_count'])):
-        ax1.text(i, bar.get_height() / 2, f'{count}', ha='center', va='bottom', color='white', fontsize=8)
-
+    plot_bars(ax1, result_df['material'], result_df['hazardous_substances_count'])
     ax1.set_ylabel('Count of Hazardous Substances')
     ax1.set_title('Count of Hazardous Substances in Each Material')
     ax1.set_xticklabels(result_df['material'], rotation=45, ha='right')
    
     # Percentage
-    ax2.grid(True, linestyle='--', linewidth=0.5)
     result_df.sort_values("percentage_hazardous", inplace=True, ascending=False)    
-    bars = ax2.bar(result_df['material'], result_df['percentage_hazardous'], color='#000099', zorder=3)
-    for i, (bar, perc) in enumerate(zip(bars, result_df['percentage_hazardous'])):
-        ax2.text(i, bar.get_height() / 2, f'{round(perc, 2)}%', ha='center', va='bottom', color='white', fontsize=8)
-
+    result_df["percentage_hazardous"] = round(result_df["percentage_hazardous"], 2)
+    plot_bars(ax2, result_df['material'], result_df["percentage_hazardous"])
     ax2.set_ylabel('Percentage of Hazardous Substances')
     ax2.set_title('Percentage of Hazardous Substances in Each Material')
     ax2.set_xticklabels(result_df['material'], rotation=45, ha='right')
-    
+    fig.canvas.manager.window.state('zoomed')
+    plt.tight_layout()
     plt.show()
 
 
