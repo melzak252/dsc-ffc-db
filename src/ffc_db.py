@@ -45,6 +45,7 @@ class FFC_DB:
 
         self._clean_edc_lists(df, new_df)
         self._replace_material_info(df, new_df)
+        self.food_contact_clean(df,new_df)
 
         # new_df.to_excel("data/cleaned.xlsx", engine="openpyxl")
         new_df.to_csv(CLEANDED_DATA)
@@ -77,7 +78,41 @@ class FFC_DB:
         new_df["GHS-aligned classifications"] = df["Danish \nEPA's predicted GHS-aligned classifications for HH or ENVH"].where(df["Danish \nEPA's predicted GHS-aligned classifications for HH or ENVH"] != 'not listed')
         new_df["GHS-aligned HH priority"] = df["predicted priority HH: potential CMR substance based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"].where(df["predicted priority HH: potential CMR substance based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"] != 'not listed')
         new_df["GHS-aligned ENVH priority"] = df["predicted priority ENVH: Class 1 Aq. Chronic with or without Aq. Acute 1 toxicant based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"].where(df["predicted priority ENVH: Class 1 Aq. Chronic with or without Aq. Acute 1 toxicant based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"] != 'not listed')
-        
+    
+    def food_contact_clean(self,df: pd.DataFrame, new_df: pd.DataFrame) -> None:
+        for col_name in df.columns:
+            if match:= re.match(r"included in the CPPdb?[^\W_]+",col_name):
+                new_df["food_contact"] = [self.has_fc(x) for x in df[col_name]]
+    def has_fc(self,val: str):
+       if val.endswith("no"):
+           return False
+       fc_check = val.split(';')
+       
+       if len(fc_check) < 3:
+           return False
+       return True
+       
+       
+       
+       
+       
+           
+       
+           
+           
+           
+           
+            
+       
+                       
+                       
+                   
+                    
+                
+                                
+                
+            
+            
     def _yes_no_column(self, series: pd.Series) -> pd.Series:
         return series.str.startswith("yes")
 
