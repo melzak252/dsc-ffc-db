@@ -80,39 +80,20 @@ class FFC_DB:
         new_df["GHS-aligned ENVH priority"] = df["predicted priority ENVH: Class 1 Aq. Chronic with or without Aq. Acute 1 toxicant based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"].where(df["predicted priority ENVH: Class 1 Aq. Chronic with or without Aq. Acute 1 toxicant based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"] != 'not listed')
     
     def food_contact_clean(self,df: pd.DataFrame, new_df: pd.DataFrame) -> None:
-        for col_name in df.columns:
-            if match:= re.match(r"included in the CPPdb?[^\W_]+",col_name):
-                new_df["food_contact"] = [self.has_fc(x) for x in df[col_name]]
+        new_df["food_contact"] = [self.has_fc(x) for x in df["included in the CPPdb?\n + List A or B status and if considered fc (assessed for ListA only)"]]
+
     def has_fc(self,val: str):
        if val.endswith("no"):
            return False
+       
        fc_check = val.split(';')
        
        if len(fc_check) < 3:
            return False
+       
        return True
        
-       
-       
-       
-       
-           
-       
-           
-           
-           
-           
-            
-       
-                       
-                       
-                   
-                    
-                
-                                
-                
-            
-            
+ 
     def _yes_no_column(self, series: pd.Series) -> pd.Series:
         return series.str.startswith("yes")
 
