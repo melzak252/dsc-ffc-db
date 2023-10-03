@@ -10,21 +10,11 @@ DATE_FORMAT = "%d-%m-%Y %H:%M:%S"
 
 def plot_bars(ax, labels, values, color='#000099'):
     ax.grid(True, linestyle='--', linewidth=0.5)
-    result_df.sort_values("count", inplace=True, ascending=False)    
     bars = ax.bar(labels, values, color=color, zorder=3)
     for i, (bar, count) in enumerate(zip(bars, values)):
         ax.text(i, bar.get_height() / 2, f'{count}', ha='center', va='bottom', color='white', fontsize=8)
 
-
-if __name__ == "__main__":
-    plt.style.use('dark_background')
-    logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, datefmt=DATE_FORMAT)
-    logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT, datefmt=DATE_FORMAT)
-    db = FFC_DB()
-    if not db.is_downloaded:
-        db.download_xlsx()
-    # db.clean_data()
-    df = db.get_clean_data()
+def plot_data(df: pd.DataFrame):
     material_columns = [
         "Plastics",
         "Coatings",
@@ -85,6 +75,20 @@ if __name__ == "__main__":
     fig.canvas.manager.window.state('zoomed')
     plt.tight_layout()
     plt.show()
+
+
+if __name__ == "__main__":
+    plt.style.use('dark_background')
+    logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, datefmt=DATE_FORMAT)
+    logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT, datefmt=DATE_FORMAT)
+    db = FFC_DB()
+    # if not db.is_downloaded:
+    #     db.download_xlsx()
+
+    # db.clean_data()
+
+    df = db.get_clean_data()
+    plot_data(df)
 
 
 
