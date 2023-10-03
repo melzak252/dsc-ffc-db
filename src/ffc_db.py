@@ -78,9 +78,33 @@ class FFC_DB:
         new_df["GHS-aligned classifications"] = df["Danish \nEPA's predicted GHS-aligned classifications for HH or ENVH"].where(df["Danish \nEPA's predicted GHS-aligned classifications for HH or ENVH"] != 'not listed')
         new_df["GHS-aligned HH priority"] = df["predicted priority HH: potential CMR substance based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"].where(df["predicted priority HH: potential CMR substance based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"] != 'not listed')
         new_df["GHS-aligned ENVH priority"] = df["predicted priority ENVH: Class 1 Aq. Chronic with or without Aq. Acute 1 toxicant based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"].where(df["predicted priority ENVH: Class 1 Aq. Chronic with or without Aq. Acute 1 toxicant based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"] != 'not listed')
-    
+        new_df["max_tonnage"] = [self._get_max_tonnage(val) for val in df["Registered under REACH? + tonnage"]]
+        new_df["min_tonnage"] = [self._get_min_tonnage(val) for val in df["Registered under REACH? + tonnage"]]
+
     def food_contact_clean(self,df: pd.DataFrame, new_df: pd.DataFrame) -> None:
         new_df["food_contact"] = [self.has_fc(x) for x in df["included in the CPPdb?\n + List A or B status and if considered fc (assessed for ListA only)"]]
+
+    def _get_max_tonnage(self, val: str) -> float:
+        result = 0.0
+        for value in val.split("; "):
+            if match := re.match(r"(\d+)\s*-\s*(\d+)", value):
+                result = max(result, float(match.group(2)))
+            
+            if match := re.match(r"(\d+)\+?", value):
+                result = max(result, float(match.group(1)))
+
+        return result
+    
+    def _get_min_tonnage(self, val: str) -> float:
+        result = 0.0
+        for value in val.split("; "):
+            if match := re.match(r"(\d+)\s*-\s*(\d+)", value):
+                result = max(result, float(match.group(1)))
+            
+            if match := re.match(r"(\d+)\+?", value):
+                result = max(result, float(match.group(1)))
+
+        return result
 
     def has_fc(self,val: str):
        if val.endswith("no"):
