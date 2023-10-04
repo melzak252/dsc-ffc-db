@@ -29,7 +29,6 @@ class FFC_DB:
         return os.path.exists(self.config.get("cleaned_file"))
 
     def download_xlsx(self) -> None:
-        logging.info("Downloading data from API")
         headers = {"Content-Type": "application/json"}
         resp = requests.get(self.config.get("api_xl_url"), headers=headers)
 
@@ -46,7 +45,7 @@ class FFC_DB:
         
         warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
 
-        df = pd.read_excel(self.config.get("ffc_db_file"), engine="openpyxl", sheet_name=self.config.get("data_sheet_name"))
+        df = pd.read_excel(self.config.get("ffc_db_file"), engine="openpyxl", sheet_name=self.config.get("data_sheet_name") )
 
         cleaned_df = pd.DataFrame()
 

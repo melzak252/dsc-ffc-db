@@ -1,0 +1,6 @@
+data_folder = "data"
+ffc_db_file = "data/FFCdb.xlsx"
+cleaned_file = "data/FFCdb_clean.csv"
+data_sheet_name = "FCCdb_FINAL_LIST"
+api_record_url = "https://zenodo.org/api/records/4296944"
+api_xl_url = "https://zenodo.org/api/files/9b157c7a-93cc-4812-aeff-3c1fe71dbafd/FCCdb_201130_v5_Zenodo.xlsx"
