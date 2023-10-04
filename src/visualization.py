@@ -22,11 +22,12 @@ MATERIALS = [
 ]
 
 
-def hazardous_pie_chart(df: pd.DataFrame):
+def plot_hazardous_pie_chart(df: pd.DataFrame):
+    plt.figure(figsize=(10, 6))
     plt.style.use("dark_background")
 
     total_count = df[df["Hazardous auth"]].size
-    hsub_in_food = df[df["Hazardous auth"] & df["food_contact"]].size
+    hsub_in_food = df[df["Hazardous auth"] & (df["food_contact"] | df["SIN food contact"])].size
     hsub_no_food = total_count - hsub_in_food
 
     chart_data = [hsub_in_food, hsub_no_food]
@@ -36,15 +37,17 @@ def hazardous_pie_chart(df: pd.DataFrame):
     plt.pie(chart_data, labels=labels, colors=colors, autopct="%.2f")
     plt.title("Percentage of Hazardous substances in contact with food")
 
+    plt.savefig("hazardous_pie_chart.png")
 
-def plot_bars(ax: plt.Axes, labels: pd.Series, values: pd.Series, color: str="#000099") -> None:
-    ax.grid(True, linestyle="--", linewidth=0.5)
-    bars = ax.bar(labels, values, color=color, zorder=3)
-    ax.set_xticks(labels)
-    ax.set_xticklabels(labels, rotation=45, ha="right")
+
+def plot_bars(labels: pd.Series, values: pd.Series, color: str="#000099") -> None:
+    plt.grid(True, linestyle="--", linewidth=0.5)
+    bars = plt.bar(labels, values, color=color, zorder=3)
+
+    plt.xticks(rotation=45, ha="right")
 
     for i, (bar, count) in enumerate(zip(bars, values)):
-        ax.text(
+        plt.text(
             i,
             bar.get_height() / 2,
             f"{count}",
@@ -54,20 +57,47 @@ def plot_bars(ax: plt.Axes, labels: pd.Series, values: pd.Series, color: str="#0
             fontsize=8,
         )
 
-
-
 def plot_hazardous_count(df: pd.DataFrame):
+    plt.figure(figsize=(10, 6))
     plt.style.use("dark_background")
-    fig, (ax, ax1, ax2) = plt.subplots(ncols=3)
-    fig.canvas.manager.window.state("zoomed")
+    df.sort_values("hazardous_substances_count", inplace=True, ascending=False)
+    plot_bars(df["material"], df["hazardous_substances_count"])
+    plt.ylabel("Count of Hazardous Substances")
+    plt.title("Count of Hazardous Substances in Each Material")
+    plt.tight_layout()
+    plt.savefig("hazardous_count.png")
 
+def plot_hazardous_percentage(df: pd.DataFrame):
+    plt.figure(figsize=(10, 6))
+    plt.style.use("dark_background")
+    df.sort_values("percentage_hazardous", inplace=True, ascending=False)
+    plot_bars(df["material"], df["percentage_hazardous"])
+    plt.ylabel("Percentage of Hazardous Substances")
+    plt.title("Percentage of Hazardous Substances in Each Material")
+    plt.tight_layout()
+    plt.savefig("hazardous_percentage.png")
+
+
+def plot_material_count(df: pd.DataFrame):
+    plt.figure(figsize=(10, 6))
+    plt.style.use("dark_background")
+    df.sort_values("count", inplace=True, ascending=False)
+    plot_bars(df["material"], df["count"])
+    plt.ylabel("Count of Materials")
+    plt.title("Count of Substances in Each Material")
+    plt.tight_layout()
+    plt.savefig("material_count.png")
+
+
+
+def prepare_data_for_material_plots(df: pd.DataFrame) -> pd.DataFrame:
     results = []
 
     for column in MATERIALS:
         total_substances = df[column].sum()
         hazardous_substances = len(df[df["Hazardous auth"] & df[column]])
 
-        percentage_hazardous = (hazardous_substances / total_substances) * 100
+        percentage_hazardous = round((hazardous_substances / total_substances) * 100, 1)
         results.append(
             {
                 "material": column,
@@ -77,25 +107,4 @@ def plot_hazardous_count(df: pd.DataFrame):
             }
         )
 
-    result_df = pd.DataFrame(results)
-     
-    # Counts
-    result_df.sort_values("count", inplace=True, ascending=False)
-    plot_bars(ax, result_df["material"], result_df["count"])
-    ax.set_ylabel("Count of Materials")
-    ax.set_title("Count of Substances in Each Material")
-
-    # Hazardous substances count
-    result_df.sort_values("hazardous_substances_count", inplace=True, ascending=False)
-    plot_bars(ax1, result_df["material"], result_df["hazardous_substances_count"])
-    ax1.set_ylabel("Count of Hazardous Substances")
-    ax1.set_title("Count of Hazardous Substances in Each Material")
-
-    # Percentage
-    result_df.sort_values("percentage_hazardous", inplace=True, ascending=False)
-    result_df["percentage_hazardous"] = round(result_df["percentage_hazardous"], 1)
-    plot_bars(ax2, result_df["material"], result_df["percentage_hazardous"])
-    ax2.set_ylabel("Percentage of Hazardous Substances")
-    ax2.set_title("Percentage of Hazardous Substances in Each Material")
-
-    plt.tight_layout()
+    return pd.DataFrame(results)

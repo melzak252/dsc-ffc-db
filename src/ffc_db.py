@@ -1,56 +1,122 @@
 import logging
 import os
 import re
+import tomllib
+import warnings
 
+import numpy as np
 import pandas as pd
 import requests
 
-DATA_FILE_NAME = "data/FFCdb.xlsx"
-CLEANDED_DATA = "data/FFCdb_clean.csv"
-SHEET_NAME = "FCCdb_FINAL_LIST"
-API_RECORD_URL = "https://zenodo.org/api/records/4296944"
-API_XL_DATA_URL = "https://zenodo.org/api/files/9b157c7a-93cc-4812-aeff-3c1fe71dbafd/FCCdb_201130_v5_Zenodo.xlsx"
-
-
 class FFC_DB:
+    YES = "yes"
+    NO = "no"
+    NOT_LISTED = "not listed"
+
+    def __init__(self) -> None:
+        with open("constants.toml", "rb") as f:
+            self.config = tomllib.load(f)
+        
+        if not os.path.exists(self.config.get("data_folder")):
+            os.mkdir(self.config.get("data_folder"))
+
     @property
     def is_downloaded(self) -> bool:
-        return os.path.exists(DATA_FILE_NAME)
+        return os.path.exists(self.config.get("ffc_db_file"))
     
     @property
     def is_cleaned(self) -> bool:
-        return os.path.exists(CLEANDED_DATA)
+        return os.path.exists(self.config.get("cleaned_file"))
 
     def download_xlsx(self) -> None:
         logging.info("Downloading data from API")
         headers = {"Content-Type": "application/json"}
-        resp = requests.get(API_XL_DATA_URL, headers=headers)
+        resp = requests.get(self.config.get("api_xl_url"), headers=headers)
 
         if not resp.status_code == 200:
-            logging.info(
-                f"Request status code is not OK. Status code: {resp.status_code}"
-            )
             return
 
-        logging.info(f"Writing data to file {DATA_FILE_NAME}")
-        with open(DATA_FILE_NAME, "wb") as xl_file:
+        logging.info(f"Writing data to file {self.config.get('ffc_db_file')}")
+        with open(self.config.get("ffc_db_file"), "wb") as xl_file:
             xl_file.write(resp.content)
 
     def clean_data(self) -> None:
         if not self.is_downloaded:
             return
+        
+        warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
 
-        df = pd.read_excel(DATA_FILE_NAME, engine="openpyxl", sheet_name=SHEET_NAME)
-        new_df = pd.DataFrame()
+        df = pd.read_excel(self.config.get("ffc_db_file"), engine="openpyxl", sheet_name=self.config.get("data_sheet_name"))
 
-        self._clean_edc_lists(df, new_df)
-        self._replace_material_info(df, new_df)
-        self.food_contact_clean(df,new_df)
+        cleaned_df = pd.DataFrame()
 
-        # new_df.to_excel("data/cleaned.xlsx", engine="openpyxl")
-        new_df.to_csv(CLEANDED_DATA)
+        self._clean_most_valuable_columns(df, cleaned_df)
+        
+        self._clean_sources(df, cleaned_df)
+        self._clean_lists_columns(df, cleaned_df)
 
-    def _replace_material_info(self, df: pd.DataFrame, new_df: pd.DataFrame) -> None:
+        cleaned_df.to_csv(self.config.get("cleaned_file"))
+
+
+
+
+    def _clean_most_valuable_columns(self, df: pd.DataFrame, new_df: pd.DataFrame) -> None:
+        new_df["CAS validity"] = df["CAS \nvalidity"].str.startswith("valid")
+        new_df["CAS/CFSAN number"] = df["CAS \nnumber or CFSAN id"]
+        new_df["Name"] = df["Name"]
+        new_df["Synonyms"] = df["Synonyms, \nas used by other sources"]
+        new_df["Hazardous auth"] = self._yes_no_column(df["Priority hazardous substance prioritized based on selected authoritative sources? + why"])
+        new_df["Potential concern non-auth"] = self._yes_no_column(df["Substance of potential concern identified based on selected non-authoritative sources? + why"])
+        new_df["ECHA: HH"] = pd.to_numeric(df["ECHA \nC&L: \nSUM HH"], errors="coerce")
+        new_df["ECHA: ENVH"] = pd.to_numeric(df["ECHA \nC&L: SUM ENVH"], errors="coerce")
+        new_df["ECHA: Signal Word"] = df["ECHA \nC&L: Signal Word"].where(df["ECHA \nC&L: Signal Word"] != self.NOT_LISTED)
+        new_df["ECHA: Classification"] = df["ECHA \nC&L: \nClassification"].where(df["ECHA \nC&L: \nClassification"] != self.NOT_LISTED)
+        new_df["GHS-J: HH"] = pd.to_numeric(df["GHS-J: \nSUM HH"], errors="coerce")
+        new_df["GHS-J: ENVH"] = pd.to_numeric(df["GHS-J: \nSUM ENVH"], errors="coerce")
+        new_df["GHS-J: Signal Word"] = df["GHS-J: \nSignal Word"].where(df["GHS-J: \nSignal Word"] != self.NOT_LISTED)
+        new_df["GHS-J: Classification"] = df["GHS-J: \nClassification"].where(df["GHS-J: \nClassification"] != self.NOT_LISTED)
+
+        new_df["GHS-aligned classifications"] = df["Danish \nEPA's predicted GHS-aligned classifications for HH or ENVH"].where(df["Danish \nEPA's predicted GHS-aligned classifications for HH or ENVH"] != self.NOT_LISTED)
+        new_df["GHS-aligned HH priority"] = df["predicted priority HH: potential CMR substance based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"].where(df["predicted priority HH: potential CMR substance based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"] != self.NOT_LISTED)
+        new_df["GHS-aligned ENVH priority"] = df["predicted priority ENVH: Class 1 Aq. Chronic with or without Aq. Acute 1 toxicant based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"].where(df["predicted priority ENVH: Class 1 Aq. Chronic with or without Aq. Acute 1 toxicant based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"] != self.NOT_LISTED)
+        new_df["max_tonnage"] = [self._get_max_tonnage(val) for val in df["Registered under REACH? + tonnage"]]
+        new_df["min_tonnage"] = [self._get_min_tonnage(val) for val in df["Registered under REACH? + tonnage"]]
+        new_df["food_contact"] = [self._has_fc(x) for x in df["included in the CPPdb?\n + List A or B status and if considered fc (assessed for ListA only)"]]
+        new_df["SIN food contact"] = df["SIN \nList's use groups"].str.contains("food", case=False)
+        new_df["SIN groups"] = df["SIN \nList's use groups"]
+        new_df["PMT/vPvM UBA"] = df["PMT/vPvM classification by UBA 2019 report + Assessment quality"]
+        self._clean_material_info(df, new_df)
+
+
+
+    def _clean_lists_columns(self, df: pd.DataFrame, new_df: pd.DataFrame):
+        new_df["EDC REACH"] = self._yes_no_column(df["EDC,  REACH classification"])
+        new_df["EDC EU"] = self._yes_no_column(df["Included on the EU Endocrine Disruptor Lists? + List type"])
+        new_df["EDC ECHA"] = self._yes_no_column(df["Included on the ECHA's Endocrine disruptor assessment list? + Status + Outcome + Follow-up + Authority"])
+        new_df["EDC UNEP"] = self._yes_no_column(df["EDC included in \n2018 UNEP report?"])
+        new_df["EDC TEDX"] = self._yes_no_column(df["EDC \non TEDX list?"])
+        new_df["EDC REACH/Biociedes requlations"] = self._yes_no_column(df["EDC recognized in the EU under REACH or Biocides regulation"])
+        new_df["PBT/vPvB/POP EU US"] = self._yes_no_column(df["PBT \nor vPvB or POP? (EU, US)"])
+        new_df["PBT ECHA"] = self._yes_no_column(df["On ECHA's PBT assessment list? + Status + Outcome + Follow-up + Assessment date + Authority"])
+        new_df["SVHC REACH"] = self._yes_no_column(df["On EU \nREACH \nSVHC list (Candidate list for authorization)? + reasons for inclusion"])
+        new_df["Authorization list REACH"] = self._yes_no_column(df["On EU \nREACH \nAuthorization list, Annex XIV? + reasons for inclusion"])
+        new_df["Restriction list REACH"] = self._yes_no_column(df["On EU \nREACH Restriction list, Annex XVII? + entry number"])
+        new_df["Cal Prop65"] = self._yes_no_column(df["on Cal \nProp65 List? + indicated toxicity"])
+        new_df["CoRAP EU"] = self._yes_no_column(df["on EU CoRAP list? + Status + Initial grounds for concern + Year + Evaluating Member State"])
+        new_df["OpenFoodToxDB EFSA"] = self._yes_no_column(df["In EFSA's Open Food Tox database?"])
+        new_df["Genotoxicity OFTDB EFSA"] = df["Genotoxicity Calls from EFSA OpenFoodTox database"]
+        new_df["SCI EPA"] = self._yes_no_column(df["on EPA's \nsafer \nchemical ingredients \nlist?"])
+        new_df["Genotoxic concer by van Bossuyt"] = self._yes_no_column(df["Substances \nof genotoxic concern, prioritized by van Bossuyt et al. 2017, 2018"])
+        new_df["SIN"] = self._yes_no_column(df["on \nSIN list?\n + reasons for inclusion"])
+        new_df["ToxValDB"] = self._yes_no_column(df["In ToxVal\ndatabase? + N DataSources; N PubmedArticles; N PubchemDataSources; N CPDatCount"])
+        new_df["Registerd REACH"] = self._yes_no_column(df["Registered under REACH? + tonnage"])
+        new_df["Chemical Universe Mapping REACH"] = self._yes_no_column(df["on the REACH Chemical Universe Mapping list? + Tonnage + Registration Status + Position in the chemical universe"])
+        new_df["Plastics additives ECHA"] = self._yes_no_column(df["on ECHA's \nplastics additives list? + main function indicated by ECHA"])
+        new_df["CPPdb"] = self._yes_no_column(df["included in the CPPdb?\n + List A or B status and if considered fc (assessed for ListA only)"])
+        new_df["TSCA"] = self._yes_no_column(df["on TSCA \ninventory? + status"])
+        new_df["NZIOC"] = self._yes_no_column(df["on New \nZealand list of chemicals (NZIOC)? + conditions"])   
+
+    def _clean_material_info(self, df: pd.DataFrame, new_df: pd.DataFrame) -> None:
         for col_name in df.columns:
             if match := re.match(r"^Global \nInventory: (.+)$", col_name):
                 material = match.group(1)
@@ -58,31 +124,13 @@ class FFC_DB:
 
         new_df["Usage count"] = df["N global \nFCM inventories where included"].astype(int)
 
+    def _clean_sources(self, df: pd.DataFrame, new_df: pd.DataFrame) -> None:
+        for col_name in df.columns:
+            if match := re.match(r"^S(\d+)$", col_name):
+                new_df[col_name] = df[col_name] != 0
 
-    def _clean_edc_lists(self, df: pd.DataFrame, new_df: pd.DataFrame) -> None:
-        new_df["CAS validity"] = df["CAS \nvalidity"].str.startswith("valid")
-        new_df["CAS/CFSAN number"] = df["CAS \nnumber or CFSAN id"]
-        
-        new_df["Hazardous auth"] = self._yes_no_column(df["Priority hazardous substance prioritized based on selected authoritative sources? + why"])
-        new_df["Potential concern non-auth"] = self._yes_no_column(df["Substance of potential concern identified based on selected non-authoritative sources? + why"])
-        new_df["ref_count"] = df["N sources \nthat mention this chemical"].astype(int)
-        new_df["ECHA: HH"] = pd.to_numeric(df["ECHA \nC&L: \nSUM HH"], errors="coerce")
-        new_df["ECHA: ENVH"] = pd.to_numeric(df["ECHA \nC&L: SUM ENVH"], errors="coerce")
-        new_df["ECHA: Signal Word"] = df["ECHA \nC&L: Signal Word"].where(df["ECHA \nC&L: Signal Word"] != "not listed")
-        new_df["ECHA: Classification"] = df["ECHA \nC&L: \nClassification"].where(df["ECHA \nC&L: \nClassification"] != "not listed")
-        new_df["GHS-J: HH"] = pd.to_numeric(df["GHS-J: \nSUM HH"], errors="coerce")
-        new_df["GHS-J: ENVH"] = pd.to_numeric(df["GHS-J: \nSUM ENVH"], errors="coerce")
-        new_df["GHS-J: Signal Word"] = df["GHS-J: \nSignal Word"].where(df["GHS-J: \nSignal Word"] != "not listed")
-        new_df["GHS-J: Classification"] = df["GHS-J: \nClassification"].where(df["GHS-J: \nClassification"] != "not listed")
+        new_df["Ref count"] = df["N sources \nthat mention this chemical"].astype(int)
 
-        new_df["GHS-aligned classifications"] = df["Danish \nEPA's predicted GHS-aligned classifications for HH or ENVH"].where(df["Danish \nEPA's predicted GHS-aligned classifications for HH or ENVH"] != 'not listed')
-        new_df["GHS-aligned HH priority"] = df["predicted priority HH: potential CMR substance based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"].where(df["predicted priority HH: potential CMR substance based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"] != 'not listed')
-        new_df["GHS-aligned ENVH priority"] = df["predicted priority ENVH: Class 1 Aq. Chronic with or without Aq. Acute 1 toxicant based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"].where(df["predicted priority ENVH: Class 1 Aq. Chronic with or without Aq. Acute 1 toxicant based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"] != 'not listed')
-        new_df["max_tonnage"] = [self._get_max_tonnage(val) for val in df["Registered under REACH? + tonnage"]]
-        new_df["min_tonnage"] = [self._get_min_tonnage(val) for val in df["Registered under REACH? + tonnage"]]
-
-    def food_contact_clean(self,df: pd.DataFrame, new_df: pd.DataFrame) -> None:
-        new_df["food_contact"] = [self.has_fc(x) for x in df["included in the CPPdb?\n + List A or B status and if considered fc (assessed for ListA only)"]]
 
     def _get_max_tonnage(self, val: str) -> float:
         result = 0.0
@@ -106,8 +154,8 @@ class FFC_DB:
 
         return result
 
-    def has_fc(self,val: str):
-       if val.endswith("no"):
+    def _has_fc(self, val: str) -> bool:
+       if val.endswith(self.NO):
            return False
        
        fc_check = val.split(';')
@@ -119,7 +167,22 @@ class FFC_DB:
        
  
     def _yes_no_column(self, series: pd.Series) -> pd.Series:
-        return series.str.startswith("yes")
+        return series.str.startswith(self.YES)
 
     def get_clean_data(self) -> pd.DataFrame:
-        return pd.read_csv(CLEANDED_DATA)
+        return pd.read_csv(self.config.get("cleaned_file"))
+    
+    def save_strong_correlations(self, df: pd.DataFrame = None, method: str = "pearson", threshold: float = 0.7):
+        correlation_matrix = df.select_dtypes(exclude='object').corr(method=method)
+
+        with open(f"correlations_{method}.txt", "w") as f:
+            for col in correlation_matrix.columns:
+                for index in correlation_matrix.index:
+                    if col == index or correlation_matrix.at[index, col] is None:
+                        continue
+
+                    if abs(corr := correlation_matrix.at[index, col]) > threshold:
+                        f.write(f"{col} {index} {round(corr, 2)}\n")
+                        correlation_matrix.at[index, col] = correlation_matrix.at[col, index]  = None
+                        
+
