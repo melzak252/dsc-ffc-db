@@ -1,1 +1,1 @@
-All information are in Presentation.md/html/pdf
+All informations are in Presentation.md/html/pdf
