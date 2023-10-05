@@ -40,8 +40,8 @@ class FFC_DB:
     NO = "no"
     NOT_LISTED = "not listed"
 
-    def __init__(self) -> None:
-        with open("constants.toml", "rb") as f:
+    def __init__(self, config: str = "constants.toml") -> None:
+        with open(config, "rb") as f:
             self.config = tomllib.load(f)
         
         if not os.path.exists(self.config.get("data_folder")):

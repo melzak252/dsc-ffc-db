@@ -11,6 +11,7 @@ def main() -> None:
 
     parser.add_argument("-cm", "--corr-method", default="pearson", help="Checks pandas correlation between all numeric columns in cleaned data('pearson', 'kendall', 'spearman').")
     parser.add_argument("-corr", "--correlation", action="store_true", help="Saves pandas correlation between all numeric columns in cleaned data to csv file.")
+    parser.add_argument("-c", "--config", default="constants.toml", help="Saves pandas correlation between all numeric columns in cleaned data to csv file.")
     parser.add_argument("-fd", "--force-download", action="store_true", help="Force redownload of raw data")
     parser.add_argument("-fc", "--force-cleanup", action="store_true", help="Force recleanup of raw data")
     parser.add_argument("-v", "--visualisation", action="store_true", help="Shows graphs from presentations")
@@ -25,10 +26,11 @@ def main() -> None:
     if args.corr_method not in ('pearson', 'kendall', 'spearman'):
         raise Exception("Correlation method should be one of these values: ('pearson', 'kendall', 'spearman').")
     
-    if args.config and os.path.exists(args.config):
+    if args.config and not os.path.exists(args.config):
+        print(args.config)
         raise Exception("Custom config file doesn't exist.")
     
-    db = FFC_DB()
+    db = FFC_DB(config=args.config)
 
     if not db.is_downloaded or args.force_download:
         db.download_xlsx()
