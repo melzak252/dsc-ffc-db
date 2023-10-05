@@ -4,9 +4,36 @@ import re
 import tomllib
 import warnings
 
+import joblib
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import confusion_matrix, roc_curve, auc
+from sklearn.linear_model import LogisticRegression
 import numpy as np
 import pandas as pd
 import requests
+
+MATERIALS = [
+    "Plastics",
+    "Coatings",
+    "Rubber",
+    "Silicones",
+    "Ion-Exchange Resins",
+    "Paper/Board",
+    "Cellophane",
+    "Textiles",
+    "Cork and Wood",
+    "Adhesives",
+    "Colorants",
+    "Printing Inks",
+    "Wax",
+    "Inorganics",
+    "A&I Materials",
+    "Other Uses",
+]
 
 class FFC_DB:
     YES = "yes"
@@ -56,9 +83,6 @@ class FFC_DB:
 
         cleaned_df.to_csv(self.config.get("cleaned_file"))
 
-
-
-
     def _clean_most_valuable_columns(self, df: pd.DataFrame, new_df: pd.DataFrame) -> None:
         new_df["CAS validity"] = df["CAS \nvalidity"].str.startswith("valid")
         new_df["CAS/CFSAN number"] = df["CAS \nnumber or CFSAN id"]
@@ -80,8 +104,10 @@ class FFC_DB:
         new_df["GHS-aligned ENVH priority"] = df["predicted priority ENVH: Class 1 Aq. Chronic with or without Aq. Acute 1 toxicant based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"].where(df["predicted priority ENVH: Class 1 Aq. Chronic with or without Aq. Acute 1 toxicant based on the Danish EPA's predicted GHS-aligned classifications? + which classifications decisive"] != self.NOT_LISTED)
         new_df["max_tonnage"] = [self._get_max_tonnage(val) for val in df["Registered under REACH? + tonnage"]]
         new_df["min_tonnage"] = [self._get_min_tonnage(val) for val in df["Registered under REACH? + tonnage"]]
-        new_df["food_contact"] = [self._has_fc(x) for x in df["included in the CPPdb?\n + List A or B status and if considered fc (assessed for ListA only)"]]
+        new_df["CPPdb food contact"] = [self._has_fc(x) for x in df["included in the CPPdb?\n + List A or B status and if considered fc (assessed for ListA only)"]]
         new_df["SIN food contact"] = df["SIN \nList's use groups"].str.contains("food", case=False)
+        new_df["food_contact"] = new_df["SIN food contact"] or new_df["CPPdb food contact"]
+        
         new_df["SIN groups"] = df["SIN \nList's use groups"]
         new_df["PMT/vPvM UBA"] = df["PMT/vPvM classification by UBA 2019 report + Assessment quality"]
         self._clean_material_info(df, new_df)
@@ -171,17 +197,77 @@ class FFC_DB:
     def get_clean_data(self) -> pd.DataFrame:
         return pd.read_csv(self.config.get("cleaned_file"))
     
-    def save_strong_correlations(self, df: pd.DataFrame = None, method: str = "pearson", threshold: float = 0.7):
+    def save_correlations(self, df: pd.DataFrame = None, method: str = "pearson"):
         correlation_matrix = df.select_dtypes(exclude='object').corr(method=method)
+        correlation_matrix.to_csv(f"correlations_{method}.csv")
 
-        with open(f"correlations_{method}.txt", "w") as f:
-            for col in correlation_matrix.columns:
-                for index in correlation_matrix.index:
-                    if col == index or correlation_matrix.at[index, col] is None:
-                        continue
+    def prepare_data_to_logistic_regression(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.select_dtypes(exclude="object")
+        df = df.loc[:, MATERIALS + ['food_contact'] ]
+        df.to_csv("temp.csv")
+        return df
 
-                    if abs(corr := correlation_matrix.at[index, col]) > threshold:
-                        f.write(f"{col} {index} {round(corr, 2)}\n")
-                        correlation_matrix.at[index, col] = correlation_matrix.at[col, index]  = None
-                        
+    def run_regression(self, df: pd.DataFrame, save_model: bool = False) -> None:
+        data_to_regression = self.prepare_data_to_logistic_regression(df)
+        X = data_to_regression.drop(columns=['food_contact'])
+        y = data_to_regression['food_contact']
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+        
+        clf = LogisticRegression(max_iter=1000)
+        clf.fit(X_train, y_train)
+
+        y_pred = clf.predict(X_test)
+
+        accuracy = accuracy_score(y_test, y_pred)
+        print(f"Accuracy of regression: {100 * accuracy:.2f}%")
+        self.plot_regression_results(clf, X_test, y_test, y_pred, save_model)
+
+        if save_model:
+            joblib.dump(clf, "model.joblib")
+        
+
+    def plot_regression_results(self, clf: LogisticRegression, X_test: pd.DataFrame, y_test: pd.Series, y_pred: np.ndarray, save_model: bool = False) -> None:
+        if save_model:
+            self.plot_confiusion_matrix(y_test, y_pred, True)
+            self.plot_ROC(clf, X_test, y_test, True)
+            return
+
+        self.plot_confiusion_matrix(y_test, y_pred)
+        self.plot_ROC(clf, X_test, y_test)
+
+    def plot_confiusion_matrix(self, y_test: pd.Series, y_pred: np.ndarray, save_model: bool = False) -> None:
+        cm = confusion_matrix(y_test, y_pred)
+        plt.figure(figsize=(8,6))
+        sns.heatmap(cm, annot=True, fmt='g', cmap='Blues', cbar=False)
+        plt.xlabel('Predicted labels')
+        plt.ylabel('True labels')
+        plt.title('Confusion Matrix')
+
+        if save_model:
+            plt.savefig("confiusion_matrix.png")
+            return
+        
+        plt.show(block=False)
+        plt.pause(0.2)
+
+    def plot_ROC(self, clf: LogisticRegression, X_test: pd.DataFrame, y_test: pd.Series, save_model: bool = False):
+        y_prob = clf.predict_proba(X_test)[:, 1]
+        fpr, tpr, thresholds = roc_curve(y_test, y_prob)
+        roc_auc = auc(fpr, tpr)
+
+        plt.figure(figsize=(8,6))
+        plt.plot(fpr, tpr, color='darkorange', label=f'ROC curve (area = {roc_auc:.2f})')
+        plt.plot([0, 1], [0, 1], color='navy', linestyle='--')
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('Receiver Operating Characteristic (ROC) Curve')
+        plt.legend(loc='lower right')
+        
+        if save_model:
+            plt.savefig("ROC.png")
+            return
+        
+        plt.show(block=False)
+        plt.pause(0.2)
+
 
